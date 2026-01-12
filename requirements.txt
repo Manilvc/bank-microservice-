@@ -1,0 +1,34 @@
+# FastAPI and Server
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+
+# Database
+sqlalchemy==2.0.25
+pymysql==1.1.0
+cryptography==42.0.2
+alembic==1.13.1
+
+# Validation and Serialization
+pydantic==2.6.1
+pydantic-settings==2.1.0
+eval-type-backport==0.3.1
+
+# AWS S3
+boto3==1.34.34
+
+# QR Code Generation
+qrcode[pil]==7.4.2
+Pillow==10.2.0
+
+# UUID and Crypto
+uuid6==2024.1.12
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# HTTP Client (for external APIs)
+httpx==0.26.0
+
+# Logging
+structlog==24.1.0
