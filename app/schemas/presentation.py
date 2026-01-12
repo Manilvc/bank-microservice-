@@ -135,3 +135,193 @@ class DIFPresentationDefinition(BaseModel):
                 ],
             }
         }
+
+
+# Submission Schemas
+class SubmitPresentationRequest(BaseModel):
+    """Request schema for submitting a presentation."""
+    
+    holder_did: Optional[str] = Field(
+        default=None,
+        description="Holder's DID (Decentralized Identifier)",
+    )
+    submission_json: dict = Field(
+        description="Submitted credential data matching the presentation definition"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "holder_did": "did:evrc:holder123",
+                "submission_json": {
+                    "credentialSubject": {
+                        "name": "John Doe",
+                        "date_of_birth": "1990-01-01",
+                        "address": "123 Main St",
+                    }
+                },
+            }
+        }
+
+
+class SubmissionResponse(BaseModel):
+    """Response schema for a submission."""
+    
+    request_id: str = Field(description="Unique submission request ID")
+    definition_id: str = Field(description="Presentation definition ID")
+    account_type: str = Field(description="Account type")
+    document_name: str = Field(description="Document/subject name")
+    holder_did: Optional[str] = Field(description="Holder's DID")
+    status: str = Field(description="Submission status (pending, approved, rejected)")
+    created_at: datetime = Field(description="Submission timestamp")
+    completed_at: Optional[datetime] = Field(description="Completion timestamp")
+    submission_json: Optional[dict] = Field(description="Submitted data")
+
+
+class SubmissionListResponse(BaseModel):
+    """Response for listing submissions."""
+    
+    success: bool = Field(default=True)
+    message: str = Field(default="Submissions retrieved successfully")
+    data: list[SubmissionResponse] = Field(description="List of submissions")
+    total: int = Field(description="Total count")
+
+
+class UpdateSubmissionStatusRequest(BaseModel):
+    """Request schema for updating submission status."""
+    
+    status: str = Field(
+        description="New status (approved, rejected)",
+        pattern="^(approved|rejected)$",
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "approved",
+            }
+        }
+
+
+# Dashboard Schemas
+class DashboardStatisticsResponse(BaseModel):
+    """Response schema for dashboard statistics."""
+    
+    success: bool = Field(default=True)
+    message: str = Field(default="Statistics retrieved successfully")
+    data: dict = Field(
+        description="Statistics data",
+        json_schema_extra={
+            "example": {
+                "pending_reviews": 3,
+                "approved": 1,
+                "rejected": 1,
+                "qr_definitions": 4,
+                "pending_today": 2,
+                "approved_this_week": 5,
+            }
+        },
+    )
+
+
+class RecentActivityResponse(BaseModel):
+    """Response schema for recent activity."""
+    
+    success: bool = Field(default=True)
+    message: str = Field(default="Recent activity retrieved successfully")
+    data: list[SubmissionResponse] = Field(description="List of recent submissions")
+
+
+# Submission Schemas
+class SubmitPresentationRequest(BaseModel):
+    """Request schema for submitting a presentation."""
+    
+    holder_did: Optional[str] = Field(
+        default=None,
+        description="Holder's DID (Decentralized Identifier)",
+    )
+    submission_json: dict = Field(
+        description="Submitted credential data matching the presentation definition"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "holder_did": "did:evrc:holder123",
+                "submission_json": {
+                    "credentialSubject": {
+                        "name": "John Doe",
+                        "date_of_birth": "1990-01-01",
+                        "address": "123 Main St",
+                    }
+                },
+            }
+        }
+
+
+class SubmissionResponse(BaseModel):
+    """Response schema for a submission."""
+    
+    request_id: str = Field(description="Unique submission request ID")
+    definition_id: str = Field(description="Presentation definition ID")
+    account_type: str = Field(description="Account type")
+    document_name: str = Field(description="Document/subject name")
+    holder_did: Optional[str] = Field(description="Holder's DID")
+    status: str = Field(description="Submission status (pending, approved, rejected)")
+    created_at: datetime = Field(description="Submission timestamp")
+    completed_at: Optional[datetime] = Field(description="Completion timestamp")
+    submission_json: Optional[dict] = Field(description="Submitted data")
+
+
+class SubmissionListResponse(BaseModel):
+    """Response for listing submissions."""
+    
+    success: bool = Field(default=True)
+    message: str = Field(default="Submissions retrieved successfully")
+    data: list[SubmissionResponse] = Field(description="List of submissions")
+    total: int = Field(description="Total count")
+
+
+class UpdateSubmissionStatusRequest(BaseModel):
+    """Request schema for updating submission status."""
+    
+    status: str = Field(
+        description="New status (approved, rejected)",
+        pattern="^(approved|rejected)$",
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "approved",
+            }
+        }
+
+
+# Dashboard Schemas
+class DashboardStatisticsResponse(BaseModel):
+    """Response schema for dashboard statistics."""
+    
+    success: bool = Field(default=True)
+    message: str = Field(default="Statistics retrieved successfully")
+    data: dict = Field(
+        description="Statistics data",
+        json_schema_extra={
+            "example": {
+                "pending_reviews": 3,
+                "approved": 1,
+                "rejected": 1,
+                "qr_definitions": 4,
+                "pending_today": 2,
+                "approved_this_week": 5,
+            }
+        },
+    )
+
+
+class RecentActivityResponse(BaseModel):
+    """Response schema for recent activity."""
+    
+    success: bool = Field(default=True)
+    message: str = Field(default="Recent activity retrieved successfully")
+    data: list[SubmissionResponse] = Field(description="List of recent submissions")

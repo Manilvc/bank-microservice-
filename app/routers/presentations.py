@@ -17,7 +17,9 @@ from app.schemas.presentation import (
     PresentationDefinitionResponse,
     PresentationSummaryResponse,
     PresentationListResponse,
+    SubmitPresentationRequest,
 )
+from app.services.submission_service import SubmissionService, get_submission_service
 from app.schemas.error import ErrorResponse
 
 router = APIRouter(prefix="/presentations", tags=["Presentations"])
@@ -240,4 +242,48 @@ def get_dif_definition(
     return {
         "success": True,
         "presentation_definition": presentation.definition_json,
+    }
+
+
+@router.post(
+    "/{definition_id}/submit",
+    response_model=dict,
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit Presentation",
+    description="Submit a presentation for a definition (called from wallet after scanning QR)",
+    responses={
+        201: {"description": "Submission created successfully"},
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        404: {"model": ErrorResponse, "description": "Presentation definition not found"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+def submit_presentation(
+    definition_id: str,
+    request: SubmitPresentationRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Submit a presentation for a definition.
+    
+    This endpoint is called by wallet applications after scanning the QR code.
+    It creates a submission record for review.
+    """
+    submission_service = get_submission_service(db=db)
+    submission = submission_service.submit_presentation(
+        definition_id=definition_id,
+        holder_did=request.holder_did,
+        submission_json=request.submission_json,
+    )
+    
+    return {
+        "success": True,
+        "message": "Presentation submitted successfully",
+        "data": {
+            "request_id": submission.request_id,
+            "definition_id": definition_id,
+            "status": submission.status,
+            "created_at": submission.created_at,
+        },
     }

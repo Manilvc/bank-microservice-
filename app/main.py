@@ -16,7 +16,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import init_db
-from app.routers import subjects_router, presentations_router, health_router
+from app.routers import (
+    subjects_router,
+    presentations_router,
+    health_router,
+    submissions_router,
+    dashboard_router,
+)
 from app.exceptions import register_exception_handlers
 from app.middleware import RequestIDMiddleware, LoggingMiddleware
 
@@ -104,6 +110,8 @@ All errors return a standard response format with:
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(subjects_router, prefix="/api/v1")
     app.include_router(presentations_router, prefix="/api/v1")
+    app.include_router(submissions_router, prefix="/api/v1")
+    app.include_router(dashboard_router, prefix="/api/v1")
     
     @app.get("/", tags=["Root"])
     async def root():
