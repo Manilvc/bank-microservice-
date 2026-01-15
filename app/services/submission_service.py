@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import func, and_, or_
+from sqlalchemy import func, and_, or_, String, cast, text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -138,24 +138,29 @@ class SubmissionService:
         self,
         status: Optional[str] = None,
         account_type: Optional[str] = None,
+        search: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[PresentationRequest], int]:
         """
-        List submissions with filtering and pagination.
+        List submissions with filtering, search, and pagination.
         
         Args:
             status: Filter by status (pending, approved, rejected)
             account_type: Filter by account type
+            search: Search by name or document (searches in submission_json and document name)
             limit: Max results
             offset: Skip results
             
         Returns:
             Tuple of (submissions, total_count)
         """
+        from app.models.subject import Subject
+        
         query = (
             self.db.query(PresentationRequest)
             .join(PresentationDefinition)
+            .outerjoin(Subject, PresentationDefinition.subject_id == Subject.id)
         )
         
         # Apply filters
@@ -164,6 +169,20 @@ class SubmissionService:
         
         if account_type:
             query = query.filter(PresentationDefinition.account_type == account_type)
+        
+        # Apply search filter
+        if search:
+            search_term = f"%{search.lower()}%"
+            # Search in document name, submission_json, and holder_did
+            query = query.filter(
+                or_(
+                    func.lower(Subject.name).like(search_term),
+                    # Search in submission_json (cast to text and search)
+                    cast(PresentationRequest.submission_json, String).ilike(search_term),
+                    # Search in holder_did
+                    func.lower(cast(PresentationRequest.holder_did, String)).like(search_term),
+                )
+            )
         
         # Get total count
         total = query.count()
@@ -324,6 +343,116 @@ class SubmissionService:
         )
         
         return submissions
+
+
+def extract_holder_name(submission_json: Optional[dict]) -> Optional[str]:
+    """
+    Extract holder name from submission JSON.
+    
+    Looks for name in credentialSubject or top-level.
+    
+    Args:
+        submission_json: Submission data dictionary
+        
+    Returns:
+        Holder name or None
+    """
+    if not submission_json:
+        return None
+    
+    # Try credentialSubject.name first
+    credential_subject = submission_json.get("credentialSubject", {})
+    if isinstance(credential_subject, dict):
+        name = credential_subject.get("name") or credential_subject.get("full_name") or credential_subject.get("fullName")
+        if name:
+            return str(name)
+    
+    # Try top-level name
+    name = submission_json.get("name") or submission_json.get("full_name") or submission_json.get("fullName")
+    if name:
+        return str(name)
+    
+    return None
+
+
+def extract_fields_from_submission(
+    submission_json: Optional[dict],
+    requested_fields: Optional[list[dict]] = None,
+) -> list[dict]:
+    """
+    Extract fields from submission JSON for display.
+    
+    Args:
+        submission_json: Submission data dictionary
+        requested_fields: List of requested field definitions
+        
+    Returns:
+        List of extracted fields with key, name, and value
+    """
+    if not submission_json:
+        return []
+    
+    extracted = []
+    credential_subject = submission_json.get("credentialSubject", {})
+    
+    if not isinstance(credential_subject, dict):
+        return []
+    
+    # If requested_fields provided, extract those specific fields
+    if requested_fields:
+        for field_def in requested_fields:
+            field_key = field_def.get("field_key") or field_def.get("field_id")
+            field_name = field_def.get("field_name", field_key)
+            value = credential_subject.get(field_key)
+            
+            if value is not None:
+                extracted.append({
+                    "key": field_key,
+                    "name": field_name,
+                    "value": str(value),
+                })
+    else:
+        # Extract all fields from credentialSubject
+        for key, value in credential_subject.items():
+            if value is not None:
+                extracted.append({
+                    "key": key,
+                    "name": key.replace("_", " ").title(),
+                    "value": str(value),
+                })
+    
+    return extracted
+
+
+def format_relative_time(dt: datetime) -> str:
+    """
+    Format datetime as relative time string.
+    
+    Args:
+        dt: Datetime to format
+        
+    Returns:
+        Relative time string (e.g., "25 min ago", "2 hours ago", "1 days ago")
+    """
+    if not dt:
+        return ""
+    
+    now = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    
+    delta = now - dt
+    
+    if delta.days > 0:
+        return f"{delta.days} day{'s' if delta.days > 1 else ''} ago"
+    elif delta.seconds >= 3600:
+        hours = delta.seconds // 3600
+        return f"{hours} hour{'s' if hours > 1 else ''} ago"
+    elif delta.seconds >= 60:
+        minutes = delta.seconds // 60
+        return f"{minutes} min ago"
+    else:
+        return "just now"
 
 
 def get_submission_service(db: Session) -> SubmissionService:

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -52,6 +53,7 @@ class PresentationService:
         field_ids: list[int],
         purpose: Optional[str] = None,
         expiry_hours: Optional[int] = None,
+        base_url: Optional[str] = None,
     ) -> PresentationDefinition:
         """
         Create a new presentation definition.
@@ -62,6 +64,7 @@ class PresentationService:
             field_ids: List of field IDs to request
             purpose: Purpose description
             expiry_hours: Hours until expiration
+            base_url: Base URL for API endpoints (extracted from request if not provided)
             
         Returns:
             Created PresentationDefinition model
@@ -69,20 +72,14 @@ class PresentationService:
         # Get subject with fields loaded
         subject = self.subject_service.get_subject_with_fields(subject_id=subject_id)
         
-        # Get required field IDs
-        required_field_ids = {f.id for f in subject.fields if f.is_required and f.is_active}
-        
-        # Automatically include required fields if not already present
-        all_field_ids = set(field_ids) | required_field_ids
-        
         # Get all fields (user-selected + required)
         fields = self.subject_service.get_fields_by_ids(
             subject_id=subject_id,
-            field_ids=list(all_field_ids),
+            field_ids=list(field_ids),
         )
         
-        # Validate required fields are included (should always pass now, but kept for safety)
-        self._validate_required_fields(subject=subject, selected_fields=fields)
+        # # Validate required fields are included (should always pass now, but kept for safety)
+        # self._validate_required_fields(subject=subject, selected_fields=fields)
         
         # Generate IDs and timestamps
         definition_id = generate_presentation_id()
@@ -108,54 +105,27 @@ class PresentationService:
             for f in fields
         ]
         
-        # Generate QR code with complete data
-        submission_url = f"{settings.api_url}/api/v1/presentations/{definition_id}/submit"
-        definition_url = f"{settings.api_url}/api/v1/presentations/{definition_id}/definition"
+        # Use provided base_url or fall back to settings
+        api_base_url = base_url or settings.api_url
         
-        # Try full data first
+        # Generate QR code with URL-based approach (minimal data)
+        submission_url = f"{api_base_url}/api/v1/presentations/{definition_id}/submit"
+        definition_url = f"{api_base_url}/api/v1/presentations/{definition_id}/definition"
+        
+        # Minimal QR data with URL to fetch full definition
         qr_data = {
             "type": "presentation_request",
             "definition_id": definition_id,
-            "presentation_definition": dif_definition,
+            "definition_url": definition_url,
             "submission_url": submission_url,
-            "callback_url": submission_url,  # Backward compatibility
-            "subject": {
-                "id": subject.id,
-                "name": subject.name,
-                "description": subject.description,
-            },
+            "callback_url": submission_url,
             "account_type": account_type,
             "purpose": purpose or f"KYC verification for {account_type}",
             "expires_at": expires_at.isoformat(),
-            "requested_fields": requested_fields_data,
         }
         
-        # Try to generate QR code with full data
-        try:
-            qr_bytes = self.qr_service.generate_qr_bytes(data=qr_data)
-            logger.info(f"QR code generated with full data for definition: {definition_id}")
-        except ValueError as e:
-            # If data is too large, use URL-based approach
-            if "too large" in str(e).lower() or "version" in str(e).lower():
-                logger.warning(
-                    f"QR code data too large for definition {definition_id}. "
-                    f"Falling back to URL-based approach."
-                )
-                # Minimal QR data with URL to fetch full definition
-                qr_data = {
-                    "type": "presentation_request",
-                    "definition_id": definition_id,
-                    "definition_url": definition_url,  # URL to fetch full definition
-                    "submission_url": submission_url,
-                    "callback_url": submission_url,
-                    "account_type": account_type,
-                    "purpose": purpose or f"KYC verification for {account_type}",
-                    "expires_at": expires_at.isoformat(),
-                }
-                qr_bytes = self.qr_service.generate_qr_bytes(data=qr_data)
-                logger.info(f"QR code generated with URL-based approach for definition: {definition_id}")
-            else:
-                raise
+        qr_bytes = self.qr_service.generate_qr_bytes(data=qr_data)
+        logger.info(f"QR code generated with URL-based approach for definition: {definition_id}")
         
         # Upload QR to S3
         s3_key = f"qr-codes/presentations/{definition_id}.png"
@@ -313,6 +283,119 @@ class PresentationService:
                 ],
             )
     
+    def _camel_to_snake(self, camel_str: str) -> str:
+        """
+        Convert camelCase to snake_case.
+        
+        Args:
+            camel_str: camelCase string
+            
+        Returns:
+            snake_case string
+        """
+        s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', camel_str)
+        return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+    
+    def _snake_to_camel(self, snake_str: str) -> str:
+        """
+        Convert snake_case to camelCase.
+        
+        Args:
+            snake_str: snake_case string
+            
+        Returns:
+            camelCase string
+        """
+        components = snake_str.split('_')
+        return components[0] + ''.join(x.capitalize() for x in components[1:])
+    
+    def _generate_key_variations(self, field_key: str) -> list[str]:
+        """
+        Dynamically generate key variations from field_key.
+        
+        Creates variations by converting between naming conventions
+        and extracting common abbreviations.
+        
+        Args:
+            field_key: The original field key
+            
+        Returns:
+            List of key variations (original first)
+        """
+        if not field_key or not field_key.strip():
+            return []
+        
+        # Clean the field_key (remove trailing/leading whitespace and underscores)
+        field_key = field_key.strip().rstrip('_').lstrip('_')
+        if not field_key:
+            return []
+        
+        variations = [field_key]
+        
+        # Check if it's camelCase (has uppercase in middle)
+        has_camel = any(c.isupper() for c in field_key[1:]) if len(field_key) > 1 else False
+        # Check if it's snake_case
+        has_snake = '_' in field_key
+        
+        # Generate snake_case from camelCase
+        if has_camel and not has_snake:
+            snake_version = self._camel_to_snake(field_key)
+            if snake_version != field_key.lower() and snake_version not in variations:
+                variations.append(snake_version)
+        
+        # Generate camelCase from snake_case
+        if has_snake:
+            camel_version = self._snake_to_camel(field_key)
+            if camel_version != field_key and camel_version not in variations:
+                variations.append(camel_version)
+        
+        # Generate lowercase version
+        lower_version = field_key.lower()
+        if lower_version not in variations:
+            variations.append(lower_version)
+        
+        # Extract potential abbreviations from camelCase words
+        if has_camel:
+            words = re.findall('[A-Z][a-z]*', field_key)
+            if len(words) > 1:
+                # Create abbreviation from first letters
+                abbrev = ''.join(w[0].lower() for w in words)
+                if abbrev not in variations and len(abbrev) >= 2:
+                    variations.append(abbrev)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_variations = []
+        for var in variations:
+            if var and var not in seen:
+                seen.add(var)
+                unique_variations.append(var)
+        
+        return unique_variations if unique_variations else [field_key]
+    
+    def _generate_path_variations(self, field_key: str) -> list[str]:
+        """
+        Generate path variations for a field key dynamically.
+        
+        Creates multiple path variations to support different credential formats.
+        All variations are generated dynamically from the field_key.
+        
+        Args:
+            field_key: The field key identifier
+            
+        Returns:
+            List of path strings with original field_key prioritized
+        """
+        
+        # Generate paths for each variation
+        # Format: $.credentialSubject.{key} and $.vc.credentialSubject.{key}
+        path_list = []
+        
+        path_list.append(f"$.credentialSubject.{field_key}")
+        path_list.append(f"$.vc.credentialSubject.{field_key}")
+        
+        return path_list
+    
     def _build_dif_definition(
         self,
         definition_id: str,
@@ -330,42 +413,41 @@ class PresentationService:
             purpose: Purpose description
             
         Returns:
-            DIF-compliant presentation definition dict
+            DIF-compliant presentation definition dict with comment and presentation_definition wrapper
         """
         input_descriptors = []
+        path_list = []
         
         for field in fields:
-            descriptor = {
-                "id": field.field_key,
-                "name": field.field_name,
-                "purpose": field.field_description,
-                "constraints": {
-                    "fields": [
-                        {
-                            "path": [f"$.credentialSubject.{field.field_key}"],
-                            "purpose": field.field_description,
-                        }
-                    ]
-                },
-            }
-            
-            if field.is_required:
-                descriptor["constraints"]["fields"][0]["filter"] = {
-                    "type": field.field_type,
-                }
-            
-            input_descriptors.append(descriptor)
-        
-        return {
-            "id": definition_id,
-            "name": f"{subject.name} Verification",
-            "purpose": purpose,
-            "format": {
-                "ldp_vc": {
-                    "proof_type": ["Ed25519Signature2020"],
-                }
+            # Generate path variations for each field
+            path_list.append(f"$.credentialSubject.{field.field_key}")
+            path_list.append(f"$.vc.credentialSubject.{field.field_key}")
+
+        descriptor = {
+            "id": subject.did,
+            "name": subject.name,
+            "purpose": purpose or subject.description,
+            "constraints": {
+                "fields": [
+                    {
+                        "path": path_list,
+                    }
+                ],
             },
+        }
+            
+        input_descriptors.append(descriptor)
+        
+        # Build the inner presentation definition
+        inner_definition = {
+            "id": definition_id,
             "input_descriptors": input_descriptors,
+        }
+        
+        # Wrap with comment and presentation_definition
+        return {
+            "comment": purpose or f"KYC verification for {subject.name}",
+            "presentation_definition": inner_definition,
         }
 
 

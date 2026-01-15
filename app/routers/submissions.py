@@ -9,7 +9,12 @@ from fastapi import APIRouter, Depends, status, Query, Path
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services.submission_service import SubmissionService
+from app.services.submission_service import (
+    SubmissionService,
+    extract_holder_name,
+    extract_fields_from_submission,
+    format_relative_time,
+)
 from app.schemas.presentation import (
     SubmitPresentationRequest,
     SubmissionResponse,
@@ -95,24 +100,45 @@ def list_submissions(
         default=None,
         description="Filter by account type",
     ),
+    search: Optional[str] = Query(
+        default=None,
+        description="Search by name or document",
+    ),
     limit: int = Query(default=50, ge=1, le=100, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Skip results"),
     service: SubmissionService = Depends(get_submission_service),
 ) -> SubmissionListResponse:
     """
-    List submissions with optional filtering.
+    List submissions with optional filtering and search.
     
-    Supports filtering by status and account type, with pagination.
+    Supports:
+    - Filtering by status and account type
+    - Searching by name or document name
+    - Pagination
     """
     submissions, total = service.list_submissions(
         status=status_filter,
         account_type=account_type,
+        search=search,
         limit=limit,
         offset=offset,
     )
     
     submission_responses = []
     for sub in submissions:
+        # Extract holder name
+        holder_name = extract_holder_name(sub.submission_json)
+        
+        # Extract fields for display
+        requested_fields = sub.definition.requested_fields if hasattr(sub.definition, 'requested_fields') else None
+        extracted_fields = extract_fields_from_submission(
+            submission_json=sub.submission_json,
+            requested_fields=requested_fields,
+        )
+        
+        # Format relative time
+        submitted_ago = format_relative_time(sub.created_at)
+        
         submission_responses.append(
             SubmissionResponse(
                 request_id=sub.request_id,
@@ -120,10 +146,13 @@ def list_submissions(
                 account_type=sub.definition.account_type,
                 document_name=sub.definition.subject.name if sub.definition.subject else "Unknown",
                 holder_did=sub.holder_did,
-                status=sub.status,
+                status=sub.status.upper(),  # Uppercase for UI (PENDING, APPROVED, REJECTED)
                 created_at=sub.created_at,
                 completed_at=sub.completed_at,
                 submission_json=sub.submission_json,
+                holder_name=holder_name,
+                submitted_ago=submitted_ago,
+                extracted_fields=extracted_fields,
             )
         )
     
@@ -157,6 +186,19 @@ def get_submission(
     """
     submission = service.get_submission_by_id(request_id=request_id)
     
+    # Extract holder name
+    holder_name = extract_holder_name(submission.submission_json)
+    
+    # Extract fields for display
+    requested_fields = submission.definition.requested_fields if hasattr(submission.definition, 'requested_fields') else None
+    extracted_fields = extract_fields_from_submission(
+        submission_json=submission.submission_json,
+        requested_fields=requested_fields,
+    )
+    
+    # Format relative time
+    submitted_ago = format_relative_time(submission.created_at)
+    
     return {
         "success": True,
         "message": "Submission retrieved successfully",
@@ -166,10 +208,13 @@ def get_submission(
             account_type=submission.definition.account_type,
             document_name=submission.definition.subject.name if submission.definition.subject else "Unknown",
             holder_did=submission.holder_did,
-            status=submission.status,
+            status=submission.status.upper(),
             created_at=submission.created_at,
             completed_at=submission.completed_at,
             submission_json=submission.submission_json,
+            holder_name=holder_name,
+            submitted_ago=submitted_ago,
+            extracted_fields=extracted_fields,
         ).model_dump(),
     }
 

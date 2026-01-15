@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services.submission_service import SubmissionService
+from app.services.submission_service import (
+    SubmissionService,
+    extract_holder_name,
+    extract_fields_from_submission,
+    format_relative_time,
+)
 from app.schemas.presentation import (
     DashboardStatisticsResponse,
     RecentActivityResponse,
@@ -82,6 +87,19 @@ def get_recent_activity(
     
     submission_responses = []
     for sub in submissions:
+        # Extract holder name
+        holder_name = extract_holder_name(sub.submission_json)
+        
+        # Extract fields for display
+        requested_fields = sub.definition.requested_fields if hasattr(sub.definition, 'requested_fields') else None
+        extracted_fields = extract_fields_from_submission(
+            submission_json=sub.submission_json,
+            requested_fields=requested_fields,
+        )
+        
+        # Format relative time
+        submitted_ago = format_relative_time(sub.created_at)
+        
         submission_responses.append(
             SubmissionResponse(
                 request_id=sub.request_id,
@@ -89,10 +107,13 @@ def get_recent_activity(
                 account_type=sub.definition.account_type,
                 document_name=sub.definition.subject.name if sub.definition.subject else "Unknown",
                 holder_did=sub.holder_did,
-                status=sub.status,
+                status=sub.status.upper(),
                 created_at=sub.created_at,
                 completed_at=sub.completed_at,
                 submission_json=sub.submission_json,
+                holder_name=holder_name,
+                submitted_ago=submitted_ago,
+                extracted_fields=extracted_fields,
             )
         )
     

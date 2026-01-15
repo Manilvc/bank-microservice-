@@ -5,7 +5,7 @@ Handles DIF Presentation Exchange operations.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, status, Query
+from fastapi import APIRouter, Depends, status, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -52,7 +52,8 @@ def get_presentation_service(
     },
 )
 def create_presentation(
-    request: CreatePresentationRequest,
+    request_body: CreatePresentationRequest,
+    http_request: Request,
     service: PresentationService = Depends(get_presentation_service),
 ) -> PresentationDefinitionResponse:
     """
@@ -67,12 +68,16 @@ def create_presentation(
     
     Returns the presentation summary with QR code URL.
     """
+    # Extract base URL from request
+    base_url = str(http_request.base_url).rstrip('/')
+    
     presentation = service.create_presentation_definition(
-        subject_id=request.subject_id,
-        account_type=request.account_type,
-        field_ids=request.field_ids,
-        purpose=request.purpose,
-        expiry_hours=request.expiry_hours,
+        subject_id=request_body.subject_id,
+        account_type=request_body.account_type,
+        field_ids=request_body.field_ids,
+        purpose=request_body.purpose,
+        expiry_hours=request_body.expiry_hours,
+        base_url=base_url,
     )
     
     requested_fields = service.get_requested_fields_info(presentation=presentation)
@@ -236,13 +241,19 @@ def get_dif_definition(
     
     Returns the DIF-compliant presentation definition JSON
     that can be used by wallet applications.
+    
+    Structure:
+    {
+        "comment": "Description of the presentation",
+        "presentation_definition": {
+            "id": "Presentation id",
+            "input_descriptors": [...]
+        }
+    }
     """
     presentation = service.get_presentation_by_id(definition_id=definition_id)
     
-    return {
-        "success": True,
-        "presentation_definition": presentation.definition_json,
-    }
+    return presentation.definition_json
 
 
 @router.post(
