@@ -124,14 +124,23 @@ class PresentationService:
             "expires_at": expires_at.isoformat(),
         }
         
-        qr_bytes = self.qr_service.generate_qr_bytes(data=qr_data)
-        logger.info(f"QR code generated with URL-based approach for definition: {definition_id}")
+        # Upload JSON data to S3
+        json_s3_key = f"qr-data/presentations/{definition_id}.json"
+        json_url = self.s3_service.upload_json(
+            json_data=qr_data,
+            s3_key=json_s3_key,
+        )
+        logger.info(f"Uploaded QR data JSON to S3: {json_s3_key} -> {json_url}")
         
-        # Upload QR to S3
-        s3_key = f"qr-codes/presentations/{definition_id}.png"
+        # Generate QR code with S3 JSON URL
+        qr_bytes = self.qr_service.generate_qr_bytes(data=json_url)
+        logger.info(f"QR code generated with S3 JSON URL for definition: {definition_id}")
+        
+        # Upload QR image to S3
+        qr_s3_key = f"qr-codes/presentations/{definition_id}.png"
         qr_url = self.s3_service.upload_image(
             image_bytes=qr_bytes,
-            s3_key=s3_key,
+            s3_key=qr_s3_key,
         )
         
         # Create database record
@@ -143,7 +152,7 @@ class PresentationService:
             account_type=account_type,
             requested_fields=requested_fields_data,
             definition_json=dif_definition,
-            qr_code_s3_key=s3_key,
+            qr_code_s3_key=qr_s3_key,
             qr_code_url=qr_url,
             status="active",
             expires_at=expires_at,
@@ -158,9 +167,13 @@ class PresentationService:
             
         except Exception as e:
             self.db.rollback()
-            # Cleanup S3 on failure
+            # Cleanup S3 on failure (both JSON and QR image)
             try:
-                self.s3_service.delete_object(s3_key=s3_key)
+                self.s3_service.delete_object(s3_key=json_s3_key)
+            except Exception:
+                pass
+            try:
+                self.s3_service.delete_object(s3_key=qr_s3_key)
             except Exception:
                 pass
             logger.error(f"Failed to create presentation: {str(e)}")
