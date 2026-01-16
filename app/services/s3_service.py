@@ -181,6 +181,118 @@ class S3Service:
                 operation="upload",
             )
     
+    def upload_json(
+        self,
+        json_data: dict | str,
+        s3_key: str,
+        content_type: str = "application/json",
+    ) -> str:
+        """
+        Upload JSON data to S3.
+        
+        Args:
+            json_data: JSON data as dict or JSON string
+            s3_key: S3 object key (path)
+            content_type: MIME type (default: application/json)
+            
+        Returns:
+            S3 object URL
+            
+        Raises:
+            S3Exception: If upload fails
+        """
+        import json as json_lib
+        
+        try:
+            # Convert dict to JSON string if needed
+            if isinstance(json_data, dict):
+                content = json_lib.dumps(json_data, separators=(",", ":"), ensure_ascii=False)
+            else:
+                content = str(json_data)
+            
+            # Convert string to bytes
+            content_bytes = content.encode('utf-8')
+            
+            # Build upload parameters
+            upload_params = {
+                "Bucket": settings.public_bucket,
+                "Key": s3_key,
+                "Body": content_bytes,
+                "ContentType": content_type,
+            }
+            
+            # Only set ACL if using standard AWS S3 (custom endpoints like MinIO don't support ACL)
+            if not settings.aws_base_url:
+                upload_params["ACL"] = "public-read"
+            
+            self.client.put_object(**upload_params)
+            
+            # Try to make object public if using standard AWS S3
+            if not settings.aws_base_url and settings.proxy_base_url:
+                try:
+                    self.client.put_object_acl(
+                        Bucket=settings.public_bucket,
+                        Key=s3_key,
+                        ACL="public-read",
+                    )
+                    logger.info(f"Set public-read ACL for {s3_key}")
+                except ClientError as acl_error:
+                    acl_error_code = acl_error.response.get("Error", {}).get("Code", "Unknown")
+                    logger.warning(f"Could not set ACL for {s3_key}: {acl_error_code}")
+            
+            # Verify upload
+            try:
+                self.client.head_object(Bucket=settings.public_bucket, Key=s3_key)
+                logger.info(f"Verified upload: {s3_key} exists in bucket {settings.public_bucket}")
+            except ClientError as verify_error:
+                logger.warning(f"Could not verify upload for {s3_key}: {str(verify_error)}")
+            
+            # Generate accessible URL
+            if settings.proxy_base_url:
+                url = self._generate_url(s3_key=s3_key)
+                logger.info(f"Uploaded JSON to S3: {s3_key} -> Proxy URL: {url}")
+            else:
+                url = self.get_presigned_url(s3_key=s3_key, expiry_seconds=settings.aws_expire_time)
+                logger.info(f"Uploaded JSON to S3: {s3_key} -> Presigned URL: {url}")
+            
+            return url
+            
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "Unknown")
+            
+            # If ACL is not supported, retry without ACL
+            if error_code == "AccessControlListNotSupported":
+                try:
+                    logger.warning(f"ACL not supported, retrying upload without ACL for {s3_key}")
+                    self.client.put_object(
+                        Bucket=settings.public_bucket,
+                        Key=s3_key,
+                        Body=content_bytes,
+                        ContentType=content_type,
+                    )
+                    
+                    # Generate URL
+                    if settings.proxy_base_url:
+                        url = self._generate_url(s3_key=s3_key)
+                    else:
+                        url = self.get_presigned_url(s3_key=s3_key, expiry_seconds=settings.aws_expire_time)
+                    
+                    logger.info(f"Uploaded JSON to S3 (without ACL): {s3_key} -> {url}")
+                    return url
+                except ClientError as retry_error:
+                    retry_code = retry_error.response.get("Error", {}).get("Code", "Unknown")
+                    logger.error(f"S3 JSON upload failed (retry): {retry_code} - {str(retry_error)}")
+                    raise S3Exception(
+                        message=f"Failed to upload JSON: {retry_code}",
+                        operation="upload_json",
+                    )
+            
+            logger.error(f"S3 JSON upload failed: {error_code} - {str(e)}")
+            raise S3Exception(
+                message=f"Failed to upload JSON: {error_code}",
+                operation="upload_json",
+            )
+    
     def delete_object(self, s3_key: str) -> bool:
         """
         Delete object from S3.
