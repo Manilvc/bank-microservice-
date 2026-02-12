@@ -176,3 +176,5 @@ config.local.py
 *.pyo
 *.pyd
 ".env" 
+
+migrations/
