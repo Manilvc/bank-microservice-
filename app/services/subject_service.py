@@ -25,12 +25,14 @@ class SubjectService:
     
     def get_all_subjects(
         self,
+        use_case: Optional[str] = None,
         active_only: bool = True,
     ) -> list[Subject]:
         """
-        Get all subjects.
+        Get all subjects filtered by use case.
         
         Args:
+            use_case: Use case identifier (bank, hotel, etc.) - filters results
             active_only: Filter to active subjects only
             
         Returns:
@@ -38,25 +40,38 @@ class SubjectService:
         """
         query = self.db.query(Subject)
         
+        if use_case:
+            query = query.filter(Subject.use_case == use_case.lower())
+        
         if active_only:
             query = query.filter(Subject.is_active == True)
         
         return query.order_by(Subject.id).all()
     
-    def get_subject_by_id(self, subject_id: int) -> Subject:
+    def get_subject_by_id(
+        self,
+        subject_id: int,
+        use_case: Optional[str] = None,
+    ) -> Subject:
         """
-        Get subject by ID.
+        Get subject by ID, optionally filtered by use case.
         
         Args:
             subject_id: Subject primary key
+            use_case: Use case identifier - validates subject belongs to use case
             
         Returns:
             Subject model
             
         Raises:
-            NotFoundException: If subject not found
+            NotFoundException: If subject not found or doesn't match use case
         """
-        subject = self.db.query(Subject).filter(Subject.id == subject_id).first()
+        query = self.db.query(Subject).filter(Subject.id == subject_id)
+        
+        if use_case:
+            query = query.filter(Subject.use_case == use_case.lower())
+        
+        subject = query.first()
         
         if not subject:
             raise NotFoundException(
@@ -131,6 +146,7 @@ class SubjectService:
         name: str,
         description: str,
         icon_name: str,
+        use_case: str = "bank",
         icon_color: str = "#ffffff",
     ) -> Subject:
         """
@@ -140,6 +156,7 @@ class SubjectService:
             name: Subject name
             description: Subject description
             icon_name: Icon identifier
+            use_case: Use case identifier (bank, hotel, etc.)
             icon_color: Icon color hex
             
         Returns:
@@ -149,6 +166,7 @@ class SubjectService:
         
         subject = Subject(
             name=name,
+            use_case=use_case.lower(),
             description=description,
             icon_name=icon_name,
             icon_color=icon_color,

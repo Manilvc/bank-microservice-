@@ -51,6 +51,7 @@ class PresentationService:
         subject_id: int,
         account_type: str,
         field_ids: list[int],
+        use_case: str,
         purpose: Optional[str] = None,
         expiry_hours: Optional[int] = None,
         base_url: Optional[str] = None,
@@ -62,6 +63,7 @@ class PresentationService:
             subject_id: Subject/document type ID
             account_type: Type of account (e.g., Savings Account)
             field_ids: List of field IDs to request
+            use_case: Use case identifier (bank, hotel, etc.)
             purpose: Purpose description
             expiry_hours: Hours until expiration
             base_url: Base URL for API endpoints (extracted from request if not provided)
@@ -69,8 +71,19 @@ class PresentationService:
         Returns:
             Created PresentationDefinition model
         """
-        # Get subject with fields loaded
+        # Get subject with fields loaded, validate it belongs to use_case
         subject = self.subject_service.get_subject_with_fields(subject_id=subject_id)
+        
+        # Validate subject belongs to the specified use_case
+        if subject.use_case.lower() != use_case.lower():
+            raise PresentationException(
+                message=f"Subject does not belong to use case '{use_case}'",
+                details=[{
+                    "field": "subject_id",
+                    "message": f"Subject belongs to '{subject.use_case}', not '{use_case}'",
+                    "code": "use_case_mismatch",
+                }],
+            )
         
         # Get all fields (user-selected + required)
         fields = self.subject_service.get_fields_by_ids(
@@ -149,6 +162,7 @@ class PresentationService:
             name=f"{subject.name} Verification",
             purpose=purpose,
             subject_id=subject_id,
+            use_case=use_case.lower(),
             account_type=account_type,
             requested_fields=requested_fields_data,
             definition_json=dif_definition,
@@ -181,21 +195,33 @@ class PresentationService:
                 message=f"Failed to create presentation definition: {str(e)}",
             )
     
-    def get_presentation_by_id(self, definition_id: str) -> PresentationDefinition:
+    def get_presentation_by_id(
+        self,
+        definition_id: str,
+        use_case: Optional[str] = None,
+    ) -> PresentationDefinition:
         """
-        Get presentation definition by ID.
+        Get presentation definition by ID, optionally filtered by use case.
         
         Args:
             definition_id: Presentation definition ID
+            use_case: Use case identifier - validates presentation belongs to use case
             
         Returns:
             PresentationDefinition model
+            
+        Raises:
+            NotFoundException: If presentation not found or doesn't match use case
         """
-        presentation = (
+        query = (
             self.db.query(PresentationDefinition)
             .filter(PresentationDefinition.definition_id == definition_id)
-            .first()
         )
+        
+        if use_case:
+            query = query.filter(PresentationDefinition.use_case == use_case.lower())
+        
+        presentation = query.first()
         
         if not presentation:
             raise NotFoundException(
@@ -207,14 +233,16 @@ class PresentationService:
     
     def list_presentations(
         self,
+        use_case: Optional[str] = None,
         status: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[PresentationDefinition], int]:
         """
-        List presentation definitions with pagination.
+        List presentation definitions with pagination, filtered by use case.
         
         Args:
+            use_case: Use case identifier (bank, hotel, etc.) - filters results
             status: Filter by status
             limit: Max results
             offset: Skip results
@@ -223,6 +251,9 @@ class PresentationService:
             Tuple of (presentations, total_count)
         """
         query = self.db.query(PresentationDefinition)
+        
+        if use_case:
+            query = query.filter(PresentationDefinition.use_case == use_case.lower())
         
         if status:
             query = query.filter(PresentationDefinition.status == status)

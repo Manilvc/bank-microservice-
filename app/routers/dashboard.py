@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.services.auth_service import get_current_user
+from app.schemas.auth import UserContext
 from app.services.submission_service import (
     SubmissionService,
     extract_holder_name,
@@ -42,10 +44,11 @@ def get_submission_service(
     },
 )
 def get_dashboard_statistics(
+    user: UserContext = Depends(get_current_user),
     service: SubmissionService = Depends(get_submission_service),
 ) -> DashboardStatisticsResponse:
     """
-    Get dashboard statistics.
+    Get dashboard statistics for the authenticated user's use case.
     
     Returns counts for:
     - Pending reviews
@@ -55,7 +58,7 @@ def get_dashboard_statistics(
     - Pending today
     - Approved this week
     """
-    stats = service.get_dashboard_statistics()
+    stats = service.get_dashboard_statistics(use_case=user.use_case)
     
     return DashboardStatisticsResponse(
         success=True,
@@ -76,14 +79,18 @@ def get_dashboard_statistics(
 )
 def get_recent_activity(
     limit: int = Query(default=10, ge=1, le=50, description="Number of recent submissions"),
+    user: UserContext = Depends(get_current_user),
     service: SubmissionService = Depends(get_submission_service),
 ) -> RecentActivityResponse:
     """
-    Get recent submission activity.
+    Get recent submission activity for the authenticated user's use case.
     
     Returns the most recent submissions ordered by creation time.
     """
-    submissions = service.get_recent_activity(limit=limit)
+    submissions = service.get_recent_activity(
+        use_case=user.use_case,
+        limit=limit,
+    )
     
     submission_responses = []
     for sub in submissions:

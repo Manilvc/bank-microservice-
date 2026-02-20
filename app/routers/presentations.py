@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.presentation_service import PresentationService
+from app.services.auth_service import get_current_user
+from app.schemas.auth import UserContext
 from app.services.s3_service import S3Service
 from app.services.qr_service import QRCodeService
 from app.schemas.presentation import (
@@ -54,6 +56,7 @@ def get_presentation_service(
 def create_presentation(
     request_body: CreatePresentationRequest,
     http_request: Request,
+    user: UserContext = Depends(get_current_user),
     service: PresentationService = Depends(get_presentation_service),
 ) -> PresentationDefinitionResponse:
     """
@@ -75,6 +78,7 @@ def create_presentation(
         subject_id=request_body.subject_id,
         account_type=request_body.account_type,
         field_ids=request_body.field_ids,
+        use_case=user.use_case,
         purpose=request_body.purpose,
         expiry_hours=request_body.expiry_hours,
         base_url=base_url,
@@ -118,14 +122,16 @@ def list_presentations(
     ),
     limit: int = Query(default=50, ge=1, le=100, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Skip results"),
+    user: UserContext = Depends(get_current_user),
     service: PresentationService = Depends(get_presentation_service),
 ) -> PresentationListResponse:
     """
-    List presentation definitions with optional filtering.
+    List presentation definitions with optional filtering for the authenticated user's use case.
     
     Supports pagination and status filtering.
     """
     presentations, total = service.list_presentations(
+        use_case=user.use_case,
         status=status_filter,
         limit=limit,
         offset=offset,
@@ -168,14 +174,18 @@ def list_presentations(
 )
 def get_presentation(
     definition_id: str,
+    user: UserContext = Depends(get_current_user),
     service: PresentationService = Depends(get_presentation_service),
 ) -> PresentationDefinitionResponse:
     """
-    Get a presentation definition by ID.
+    Get a presentation definition by ID for the authenticated user's use case.
     
     Returns the full presentation summary including QR code URL.
     """
-    presentation = service.get_presentation_by_id(definition_id=definition_id)
+    presentation = service.get_presentation_by_id(
+        definition_id=definition_id,
+        use_case=user.use_case,
+    )
     requested_fields = service.get_requested_fields_info(presentation=presentation)
     
     summary = PresentationSummaryResponse(
@@ -207,6 +217,7 @@ def get_presentation(
 )
 def get_qr_code(
     definition_id: str,
+    user: UserContext = Depends(get_current_user),
     service: PresentationService = Depends(get_presentation_service),
 ) -> dict:
     """
@@ -214,7 +225,10 @@ def get_qr_code(
     
     Returns just the QR code URL for embedding.
     """
-    presentation = service.get_presentation_by_id(definition_id=definition_id)
+    presentation = service.get_presentation_by_id(
+        definition_id=definition_id,
+        use_case=user.use_case,
+    )
     
     return {
         "success": True,
@@ -234,6 +248,7 @@ def get_qr_code(
 )
 def get_dif_definition(
     definition_id: str,
+    user: UserContext = Depends(get_current_user),
     service: PresentationService = Depends(get_presentation_service),
 ) -> dict:
     """
@@ -251,7 +266,10 @@ def get_dif_definition(
         }
     }
     """
-    presentation = service.get_presentation_by_id(definition_id=definition_id)
+    presentation = service.get_presentation_by_id(
+        definition_id=definition_id,
+        use_case=user.use_case,
+    )
     
     return presentation.definition_json
 

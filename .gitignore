@@ -164,17 +164,147 @@ Thumbs.db
 .LSOverride
 
 # Project specific
-# Note: Alembic migration files should be tracked, so they're not ignored
+# Alembic migrations directory
+alembic/
+alembic.ini
 
 # Local configuration
 .env.local
 .env.*.local
 config.local.py
+.env
+.env.*
+!.env.example
 
 # Generated files
 *.pyc
 *.pyo
 *.pyd
+<<<<<<< Updated upstream
 ".env" 
 
 migrations/
+=======
+
+# Test files and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+test-results/
+*.cover
+*.py,cover
+
+# Local development
+local/
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+*.swp
+*.swo
+*~
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+.settings/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Database files (local/test databases)
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Build and distribution
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+*.whl
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+.conda/
+
+# AWS and credentials
+.aws/
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Local uploads and downloads (if any)
+uploads/
+downloads/
+local_storage/
+test_files/
+
+# QR code test files (if generated locally)
+test_qr_codes/
+local_qr_codes/
+
+# Documentation builds
+docs/_build/
+site/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# mypy cache
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Coverage reports
+coverage.xml
+*.cover
+.hypothesis/
+
+# FastAPI/Uvicorn
+*.pid
+*.sock
+uvicorn.log
+
+# Local scripts (if any)
+scripts/local_*
+scripts/test_*
+scripts/*.local.py 
+>>>>>>> Stashed changes

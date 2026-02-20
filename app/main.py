@@ -22,6 +22,7 @@ from app.routers import (
     health_router,
     submissions_router,
     dashboard_router,
+    auth_router,
 )
 from app.exceptions import register_exception_handlers
 from app.middleware import RequestIDMiddleware, LoggingMiddleware
@@ -108,6 +109,7 @@ All errors return a standard response format with:
     
     # Include routers
     app.include_router(health_router, prefix="/api/v1")
+    app.include_router(auth_router, prefix="/api/v1")
     app.include_router(subjects_router, prefix="/api/v1")
     app.include_router(presentations_router, prefix="/api/v1")
     app.include_router(submissions_router, prefix="/api/v1")

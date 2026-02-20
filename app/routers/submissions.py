@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, status, Query, Path
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.services.auth_service import get_current_user
+from app.schemas.auth import UserContext
 from app.services.submission_service import (
     SubmissionService,
     extract_holder_name,
@@ -51,6 +53,7 @@ def get_submission_service(
 def submit_presentation(
     definition_id: str = Path(description="Presentation definition ID"),
     request: SubmitPresentationRequest = ...,
+    user: UserContext = Depends(get_current_user),
     service: SubmissionService = Depends(get_submission_service),
 ) -> dict:
     """
@@ -62,6 +65,25 @@ def submit_presentation(
     3. Creates a submission record
     4. Returns the submission details
     """
+    # Validate definition belongs to use case before submission
+    from app.services.presentation_service import PresentationService
+    from app.services.s3_service import S3Service
+    from app.services.qr_service import QRCodeService
+    
+    db_session = next(get_db())
+    try:
+        pres_service = PresentationService(
+            db=db_session,
+            s3_service=S3Service(),
+            qr_service=QRCodeService(),
+        )
+        pres_service.get_presentation_by_id(
+            definition_id=definition_id,
+            use_case=user.use_case,
+        )
+    finally:
+        db_session.close()
+    
     submission = service.submit_presentation(
         definition_id=definition_id,
         holder_did=request.holder_did,
@@ -106,10 +128,11 @@ def list_submissions(
     ),
     limit: int = Query(default=50, ge=1, le=100, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Skip results"),
+    user: UserContext = Depends(get_current_user),
     service: SubmissionService = Depends(get_submission_service),
 ) -> SubmissionListResponse:
     """
-    List submissions with optional filtering and search.
+    List submissions with optional filtering and search for the authenticated user's use case.
     
     Supports:
     - Filtering by status and account type
@@ -117,6 +140,7 @@ def list_submissions(
     - Pagination
     """
     submissions, total = service.list_submissions(
+        use_case=user.use_case,
         status=status_filter,
         account_type=account_type,
         search=search,
@@ -177,14 +201,18 @@ def list_submissions(
 )
 def get_submission(
     request_id: str = Path(description="Submission request ID"),
+    user: UserContext = Depends(get_current_user),
     service: SubmissionService = Depends(get_submission_service),
 ) -> dict:
     """
-    Get a submission by request ID.
+    Get a submission by request ID for the authenticated user's use case.
     
     Returns the full submission details including submitted data.
     """
-    submission = service.get_submission_by_id(request_id=request_id)
+    submission = service.get_submission_by_id(
+        request_id=request_id,
+        use_case=user.use_case,
+    )
     
     # Extract holder name
     holder_name = extract_holder_name(submission.submission_json)
@@ -234,14 +262,21 @@ def get_submission(
 def update_submission_status(
     request_id: str = Path(description="Submission request ID"),
     request: UpdateSubmissionStatusRequest = ...,
+    user: UserContext = Depends(get_current_user),
     service: SubmissionService = Depends(get_submission_service),
 ) -> dict:
     """
-    Update submission status.
+    Update submission status for the authenticated user's use case.
     
     Allows approving or rejecting a pending submission.
     Only pending submissions can be updated.
     """
+    # Validate submission belongs to use case
+    service.get_submission_by_id(
+        request_id=request_id,
+        use_case=user.use_case,
+    )
+    
     submission = service.update_submission_status(
         request_id=request_id,
         new_status=request.status,

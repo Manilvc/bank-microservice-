@@ -31,6 +31,7 @@ class PresentationDefinition(Base):
         ForeignKey("subjects.id", ondelete="SET NULL"),
         nullable=True,
     )
+    use_case: Mapped[str] = mapped_column(String(50), nullable=False, default="bank")
     account_type: Mapped[str] = mapped_column(String(50), nullable=False)
     requested_fields: Mapped[dict] = mapped_column(JSON, nullable=False)
     definition_json: Mapped[dict] = mapped_column(JSON, nullable=False)

@@ -110,21 +110,34 @@ class SubmissionService:
                 message=f"Failed to create submission: {str(e)}",
             )
     
-    def get_submission_by_id(self, request_id: str) -> PresentationRequest:
+    def get_submission_by_id(
+        self,
+        request_id: str,
+        use_case: Optional[str] = None,
+    ) -> PresentationRequest:
         """
-        Get submission by request ID.
+        Get submission by request ID, optionally filtered by use case.
         
         Args:
             request_id: Submission request ID
+            use_case: Use case identifier - validates submission belongs to use case
             
         Returns:
             PresentationRequest model
+            
+        Raises:
+            NotFoundException: If submission not found or doesn't match use case
         """
-        submission = (
+        query = (
             self.db.query(PresentationRequest)
+            .join(PresentationDefinition)
             .filter(PresentationRequest.request_id == request_id)
-            .first()
         )
+        
+        if use_case:
+            query = query.filter(PresentationDefinition.use_case == use_case.lower())
+        
+        submission = query.first()
         
         if not submission:
             raise NotFoundException(
@@ -136,6 +149,7 @@ class SubmissionService:
     
     def list_submissions(
         self,
+        use_case: Optional[str] = None,
         status: Optional[str] = None,
         account_type: Optional[str] = None,
         search: Optional[str] = None,
@@ -143,9 +157,10 @@ class SubmissionService:
         offset: int = 0,
     ) -> tuple[list[PresentationRequest], int]:
         """
-        List submissions with filtering, search, and pagination.
+        List submissions with filtering, search, and pagination, filtered by use case.
         
         Args:
+            use_case: Use case identifier (bank, hotel, etc.) - filters results
             status: Filter by status (pending, approved, rejected)
             account_type: Filter by account type
             search: Search by name or document (searches in submission_json and document name)
@@ -164,6 +179,9 @@ class SubmissionService:
         )
         
         # Apply filters
+        if use_case:
+            query = query.filter(PresentationDefinition.use_case == use_case.lower())
+        
         if status:
             query = query.filter(PresentationRequest.status == status)
         
@@ -252,10 +270,13 @@ class SubmissionService:
                 message=f"Failed to update submission status: {str(e)}",
             )
     
-    def get_dashboard_statistics(self) -> dict:
+    def get_dashboard_statistics(self, use_case: Optional[str] = None) -> dict:
         """
-        Get dashboard statistics.
+        Get dashboard statistics filtered by use case.
         
+        Args:
+            use_case: Use case identifier (bank, hotel, etc.) - filters statistics
+            
         Returns:
             Dictionary with statistics
         """
@@ -263,57 +284,66 @@ class SubmissionService:
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start = today_start - timedelta(days=now.weekday())
         
+        # Base query for submissions with use_case filter
+        submission_query = (
+            self.db.query(PresentationRequest)
+            .join(PresentationDefinition)
+        )
+        
+        if use_case:
+            submission_query = submission_query.filter(
+                PresentationDefinition.use_case == use_case.lower()
+            )
+        
         # Count pending reviews
         pending_count = (
-            self.db.query(func.count(PresentationRequest.id))
-            .filter(PresentationRequest.status == "pending")
-            .scalar() or 0
+            submission_query.filter(PresentationRequest.status == "pending")
+            .count() or 0
         )
         
         # Count pending today
         pending_today = (
-            self.db.query(func.count(PresentationRequest.id))
-            .filter(
+            submission_query.filter(
                 and_(
                     PresentationRequest.status == "pending",
                     PresentationRequest.created_at >= today_start,
                 )
             )
-            .scalar() or 0
+            .count() or 0
         )
         
         # Count approved
         approved_count = (
-            self.db.query(func.count(PresentationRequest.id))
-            .filter(PresentationRequest.status == "approved")
-            .scalar() or 0
+            submission_query.filter(PresentationRequest.status == "approved")
+            .count() or 0
         )
         
         # Count approved this week
         approved_this_week = (
-            self.db.query(func.count(PresentationRequest.id))
-            .filter(
+            submission_query.filter(
                 and_(
                     PresentationRequest.status == "approved",
                     PresentationRequest.completed_at >= week_start,
                 )
             )
-            .scalar() or 0
+            .count() or 0
         )
         
         # Count rejected
         rejected_count = (
-            self.db.query(func.count(PresentationRequest.id))
-            .filter(PresentationRequest.status == "rejected")
-            .scalar() or 0
+            submission_query.filter(PresentationRequest.status == "rejected")
+            .count() or 0
         )
         
         # Count active QR definitions
-        qr_definitions_count = (
-            self.db.query(func.count(PresentationDefinition.id))
-            .filter(PresentationDefinition.status == "active")
-            .scalar() or 0
+        qr_query = self.db.query(func.count(PresentationDefinition.id)).filter(
+            PresentationDefinition.status == "active"
         )
+        
+        if use_case:
+            qr_query = qr_query.filter(PresentationDefinition.use_case == use_case.lower())
+        
+        qr_definitions_count = qr_query.scalar() or 0
         
         return {
             "pending_reviews": pending_count,
@@ -324,20 +354,31 @@ class SubmissionService:
             "approved_this_week": approved_this_week,
         }
     
-    def get_recent_activity(self, limit: int = 10) -> list[PresentationRequest]:
+    def get_recent_activity(
+        self,
+        use_case: Optional[str] = None,
+        limit: int = 10,
+    ) -> list[PresentationRequest]:
         """
-        Get recent submission activity.
+        Get recent submission activity filtered by use case.
         
         Args:
+            use_case: Use case identifier (bank, hotel, etc.) - filters results
             limit: Number of recent submissions to return
             
         Returns:
             List of recent PresentationRequest models
         """
-        submissions = (
+        query = (
             self.db.query(PresentationRequest)
             .join(PresentationDefinition)
-            .order_by(PresentationRequest.created_at.desc())
+        )
+        
+        if use_case:
+            query = query.filter(PresentationDefinition.use_case == use_case.lower())
+        
+        submissions = (
+            query.order_by(PresentationRequest.created_at.desc())
             .limit(limit)
             .all()
         )

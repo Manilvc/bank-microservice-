@@ -110,6 +110,45 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: str = "*"
     
+    # Authentication
+    auth_api_url: Optional[str] = Field(
+        default=None,
+        validation_alias="AUTH_API_URL",
+        description="Authentication API base URL for token validation"
+    )
+    auth_api_timeout: float = Field(
+        default=5.0,
+        validation_alias="AUTH_API_TIMEOUT",
+        description="Timeout in seconds for auth API requests"
+    )
+    validate_token: bool = Field(
+        default=True,
+        validation_alias="VALIDATE_TOKEN",
+        description="Whether to validate tokens via external API (set to False for development)"
+    )
+    
+    # JWT Configuration
+    jwt_secret_key: str = Field(
+        default="your-secret-key-change-in-production",
+        validation_alias="JWT_SECRET_KEY",
+        description="Secret key for JWT token signing"
+    )
+    jwt_algorithm: str = Field(
+        default="HS256",
+        validation_alias="JWT_ALGORITHM",
+        description="JWT algorithm"
+    )
+    jwt_access_token_expire_minutes: int = Field(
+        default=30,
+        validation_alias="JWT_ACCESS_TOKEN_EXPIRE_MINUTES",
+        description="Access token expiration time in minutes"
+    )
+    jwt_refresh_token_expire_days: int = Field(
+        default=7,
+        validation_alias="JWT_REFRESH_TOKEN_EXPIRE_DAYS",
+        description="Refresh token expiration time in days"
+    )
+    
     # API Base URL
     api_base_url: Optional[str] = Field(
         default=None,

@@ -7,7 +7,7 @@ SubjectFields represent extractable fields from each subject.
 from datetime import datetime
 from typing import List
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -21,8 +21,13 @@ class Subject(Base):
     
     __tablename__ = "subjects"
     
+    __table_args__ = (
+        UniqueConstraint("name", "use_case", name="uq_subject_name_use_case"),
+    )
+    
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    use_case: Mapped[str] = mapped_column(String(50), nullable=False, default="bank")
     description: Mapped[str] = mapped_column(Text, nullable=False)
     icon_name: Mapped[str] = mapped_column(String(50), nullable=False)
     icon_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#ffffff")

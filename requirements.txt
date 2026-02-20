@@ -24,6 +24,10 @@ qrcode[pil]==7.4.2
 # UUID and Crypto
 uuid6==2024.1.12
 
+# JWT and Password Hashing
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
 # Environment Variables
 python-dotenv==1.0.1
 

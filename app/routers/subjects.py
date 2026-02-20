@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.subject_service import SubjectService
+from app.services.auth_service import get_current_user
+from app.schemas.auth import UserContext
 from app.schemas.subject import (
     SubjectResponse,
     SubjectListResponse,
@@ -39,15 +41,19 @@ def get_subject_service(db: Session = Depends(get_db)) -> SubjectService:
 )
 def list_subjects(
     active_only: bool = True,
+    user: UserContext = Depends(get_current_user),
     service: SubjectService = Depends(get_subject_service),
 ) -> SubjectListResponse:
     """
-    List all subjects (KYC document types).
+    List all subjects (KYC document types) for the authenticated user's use case.
     
     Returns subjects like Aadhar Card, PAN Card, Voter ID
     with their descriptions, icons, and field counts.
     """
-    subjects = service.get_all_subjects(active_only=active_only)
+    subjects = service.get_all_subjects(
+        use_case=user.use_case,
+        active_only=active_only,
+    )
     
     subject_responses = [
         SubjectResponse(
@@ -84,6 +90,7 @@ def list_subjects(
 )
 def get_subject_fields(
     subject_id: int,
+    user: UserContext = Depends(get_current_user),
     service: SubjectService = Depends(get_subject_service),
 ) -> SubjectFieldListResponse:
     """
@@ -91,7 +98,12 @@ def get_subject_fields(
     
     Returns the subject information along with all
     extractable fields (Full Name, DOB, Address, etc.)
+    Validates subject belongs to user's use case.
     """
+    subject = service.get_subject_by_id(
+        subject_id=subject_id,
+        use_case=user.use_case,
+    )
     subject = service.get_subject_with_fields(subject_id=subject_id)
     
     field_responses = [
@@ -140,10 +152,11 @@ def get_subject_fields(
 )
 def create_subject(
     request: CreateSubjectRequest,
+    user: UserContext = Depends(get_current_user),
     service: SubjectService = Depends(get_subject_service),
 ) -> SubjectDetailResponse:
     """
-    Create a new subject (KYC document type).
+    Create a new subject (KYC document type) for the authenticated user's use case.
     
     A DID will be automatically generated using the evrc method.
     """
@@ -151,6 +164,7 @@ def create_subject(
         name=request.name,
         description=request.description,
         icon_name=request.icon_name,
+        use_case=user.use_case,
         icon_color=request.icon_color,
     )
     
@@ -183,13 +197,18 @@ def create_subject(
 def create_subject_field(
     subject_id: int,
     request: CreateSubjectFieldRequest,
+    user: UserContext = Depends(get_current_user),
     service: SubjectService = Depends(get_subject_service),
 ) -> SubjectFieldResponse:
     """
     Create a new field for a subject.
     
     Fields represent extractable data points like Full Name, DOB, etc.
+    Validates subject belongs to user's use case.
     """
+    # Validate subject belongs to use case
+    service.get_subject_by_id(subject_id=subject_id, use_case=user.use_case)
+    
     field = service.create_subject_field(
         subject_id=subject_id,
         field_key=request.field_key,
